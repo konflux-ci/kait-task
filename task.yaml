@@ -3,6 +3,8 @@ kind: Task
 metadata:
   name: ai-triage-failure
 spec:
+  workspaces:
+    - name: workspace
   params:
     - name: tangerine_api_url_secret
       type: string
@@ -13,12 +15,36 @@ spec:
     - name: tangerine_assistant_id
       type: string
       description: ID for the chat assistant
-    # TODO: this should contain the prompt and output to triage
-    - name: tangerine_query
-      default: "What is Konflux?"
+    - name: pipelinerun_name
+      type: string
+      description: Name of the current pipeline run
+    - name: task_to_debug
+      default: buildah-oci-ta
   steps:
-    - name: post-build-output
+    - name: gather-logs
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      workingDir: $(workspaces.workspace.path)
+      script: |
+        #!/usr/bin/env bash
+
+        set -e
+        set -o pipefail
+
+        TASKRUN_NAME=$(tkn taskrun list \
+          --label "tekton.dev/pipelineRun=$(params.pipelinerun_name),tekton.dev/task=$(params.task_to_debug)" \
+          --output name \
+          | cut -d/ -f2)
+
+        tkn taskrun logs \
+          ${TASKRUN_NAME} \
+          --step build \
+          > logs.txt
+
+    # TODO: deduplicate/prune logs and format query
+
+    - name: chat
+      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      workingDir: $(workspaces.workspace.path)
       env:
         - name: TANGERINE_API_TOKEN
           valueFrom:
@@ -35,6 +61,12 @@ spec:
 
         set -e
 
+        BUILD_OUTPUT=$(tail logs.txt)
+
+        QUERY='There has been a failed build! Help to understand the failure:
+
+        ${BUILD_OUTPUT}'
+
         curl \
           --silent \
           --insecure \
@@ -42,7 +74,7 @@ spec:
           --request POST \
           --header "Content-Type: application/json" \
           --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
-          --data '{"query":"$(params.tangerine_query)","stream":"false"}' \
+          --data '{"query":"${QUERY}","stream":"false"}' \
           "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
 
         # TODO: check for bad responses

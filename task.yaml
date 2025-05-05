@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: ai-triage-failure
+spec:
+  params:
+    - name: tangerine_api_url_secret
+      type: string
+      description: Secret containing the Tangerine API URL
+    - name: tangerine_api_token_secret
+      type: string
+      description: Secret containing the Tangerine API token
+    - name: tangerine_assistant_id
+      type: string
+      description: ID for the chat assistant
+    # TODO: this should contain the prompt and output to triage
+    - name: tangerine_query
+      default: "What is Konflux?"
+  steps:
+    - name: post-build-output
+      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      env:
+        - name: TANGERINE_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.tangerine_api_token_secret)
+              key: tangerine_api_token
+        - name: TANGERINE_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: $(params.tangerine_api_url_secret)
+              key: tangerine_api_url
+      script: |
+        #!/usr/bin/env bash
+
+        set -e
+
+        curl \
+          --silent \
+          --insecure \
+          --output response.json \
+          --request POST \
+          --header "Content-Type: application/json" \
+          --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
+          --data '{"query":"$(params.tangerine_query)","stream":"false"}' \
+          "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
+
+        # TODO: check for bad responses
+        jq --raw-output .text_content response.json

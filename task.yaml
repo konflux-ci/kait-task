@@ -21,6 +21,13 @@ spec:
       description: Name of the current pipeline run
     - name: task_to_debug
       default: buildah-oci-ta
+    - name: comment_on_change_request
+      type: string
+      default: "false"
+    - name: gitlab_api_token_secret
+      type: string
+    - name: gitlab_api_url_secret
+      type: string
   steps:
     - name: gather-logs
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
@@ -90,5 +97,46 @@ spec:
           --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
           --data "${DATA}" \
           "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
+    # TODO: support github
+    - name: post-comment
+      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      workingDir: $(workspaces.workspace.path)
+      when:
+        - input: "$(params.comment_on_change_request)"
+          operator: in
+          values: ["true"]
+      env:
+        - name: GITLAB_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.gitlab_api_token_secret)
+              key: gitlab_api_token
+        - name: GITLAB_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: $(params.gitlab_api_url_secret)
+              key: gitlab_api_url
+      script: |
+        #!/usr/bin/env bash
 
-        jq --raw-output .text_content response.json
+        set -e
+
+        PIPELINERUN_ANNOTATIONS=$(oc get pipelinerun $(params.pipelinerun_name) -o json | jq .metadata.annotations)
+        GITLAB_PROJECT_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/target-project-id"]')
+        GITLAB_MERGE_REQUEST_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/pull-request"]')
+
+        DATA=$(cat <<EOF
+        {
+          "body": $(jq .text_content response.json)
+        }
+        EOF
+        )
+
+        curl \
+          --insecure \
+          --fail-with-body \
+          --request POST \
+          --header "Content-Type: application/json" \
+          --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+          --data "${DATA}" \
+          "${GITLAB_API_URL}/projects/${GITLAB_PROJECT_ID}/merge_requests/${GITLAB_MERGE_REQUEST_ID}/notes"

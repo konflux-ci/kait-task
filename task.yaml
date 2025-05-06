@@ -68,6 +68,8 @@ spec:
 
         ${BUILD_OUTPUT}'
 
+        echo "${QUERY}"
+
         curl \
           --silent \
           --insecure \

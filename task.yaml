@@ -71,10 +71,7 @@ spec:
         fi
 
         BUILD_OUTPUT=$(tail logs.txt)
-
-        QUERY='There has been a failed build! Help to triage the failure:
-
-        ${BUILD_OUTPUT}'
+        QUERY="There has been a failed build! Help to triage the failure:\n${BUILD_OUTPUT}"
 
         echo "${QUERY}"
 

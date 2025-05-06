@@ -65,6 +65,7 @@ spec:
         #!/usr/bin/env bash
 
         set -e
+        set -x
 
         if [[ ! -f logs.txt ]]; then
           echo "No build logs found" && exit 1

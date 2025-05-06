@@ -65,16 +65,21 @@ spec:
         #!/usr/bin/env bash
 
         set -e
-        set -x
 
         if [[ ! -f logs.txt ]]; then
           echo "No build logs found" && exit 1
         fi
 
         BUILD_OUTPUT=$(tail logs.txt)
-        QUERY="There has been a failed build! Help to triage the failure: \n ${BUILD_OUTPUT}"
 
-        echo "${QUERY}"
+        # escape the build output
+        DATA=$(cat <<EOF
+        {
+          "query": $(echo "There has been a failed build! Help to triage the failure: \n ${BUILD_OUTPUT}" | jq -Rs .),
+          "stream": "false"
+        }
+        EOF
+        )
 
         curl \
           --fail-with-body \
@@ -83,7 +88,7 @@ spec:
           --request POST \
           --header "Content-Type: application/json" \
           --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
-          --data '{"query":"${QUERY}","stream":"false"}' \
+          --data "${DATA}" \
           "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
 
         jq --raw-output .text_content response.json

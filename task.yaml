@@ -38,7 +38,7 @@ spec:
         tkn taskrun logs \
           ${TASKRUN_NAME} \
           --step build \
-          > logs.txt
+          | tee -a logs.txt
 
     # TODO: deduplicate/prune logs and format query
 

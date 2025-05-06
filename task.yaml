@@ -15,6 +15,7 @@ spec:
     - name: tangerine_assistant_id
       type: string
       description: ID for the chat assistant
+      default: "88"
     - name: pipelinerun_name
       type: string
       description: Name of the current pipeline run

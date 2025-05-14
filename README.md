@@ -28,3 +28,17 @@ roleRef:
   name: ai-triager
   apiGroup: rbac.authorization.k8s.io
 ```
+
+A secret is required to enabled `comment_on_change_request`:
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ai-triager
+stringData:
+  tangerine_api_url: ""
+  tangerine_api_token: ""
+  git_provider_api_token: ""
+  git_provider_api_url: ""
+```

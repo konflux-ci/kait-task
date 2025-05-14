@@ -24,9 +24,9 @@ spec:
     - name: comment_on_change_request
       type: string
       default: "false"
-    - name: gitlab_api_token_secret
+    - name: git_provider_api_token_secret
       type: string
-    - name: gitlab_api_url_secret
+    - name: git_provider_api_url_secret
       type: string
   steps:
     - name: gather-logs
@@ -37,6 +37,9 @@ spec:
 
         set -e
         set -o pipefail
+
+        # TODO: get all failed task runs
+        # tkn taskrun list -o jsonpath='{range .items[?(@.status.conditions[0].status=="False")]}{.metadata.name}{"\n"}{end}'
 
         TASKRUN_NAME=$(tkn taskrun list \
           --label "tekton.dev/pipelineRun=$(params.pipelinerun_name),tekton.dev/task=$(params.task_to_debug)" \
@@ -79,11 +82,15 @@ spec:
 
         BUILD_OUTPUT=$(tail logs.txt)
 
+        QUERY="""There has been a failed build! Help to triage the failure.
+        """
+
         # escape the build output
         DATA=$(cat <<EOF
         {
-          "query": $(echo "There has been a failed build! Help to triage the failure: \n ${BUILD_OUTPUT}" | jq -Rs .),
-          "stream": "false"
+          "query": $(echo "${QUERY} \n ${BUILD_OUTPUT}" | jq -Rs .),
+          "stream": "false",
+          "client": "konflux-ai-triager"
         }
         EOF
         )
@@ -97,7 +104,7 @@ spec:
           --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
           --data "${DATA}" \
           "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
-    # TODO: support github
+
     - name: post-comment
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
       workingDir: $(workspaces.workspace.path)
@@ -106,37 +113,44 @@ spec:
           operator: in
           values: ["true"]
       env:
-        - name: GITLAB_API_TOKEN
+        - name: GIT_PROVIDER_API_TOKEN
           valueFrom:
             secretKeyRef:
-              name: $(params.gitlab_api_token_secret)
-              key: gitlab_api_token
-        - name: GITLAB_API_URL
+              name: $(params.git_provider_api_token_secret)
+              key: git_provider_api_token
+        - name: GIT_PROVIDER_API_URL
           valueFrom:
             secretKeyRef:
-              name: $(params.gitlab_api_url_secret)
-              key: gitlab_api_url
+              name: $(params.git_provider_api_url_secret)
+              key: git_provider_api_url
       script: |
         #!/usr/bin/env bash
 
         set -e
 
         PIPELINERUN_ANNOTATIONS=$(oc get pipelinerun $(params.pipelinerun_name) -o json | jq .metadata.annotations)
-        GITLAB_PROJECT_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/target-project-id"]')
-        GITLAB_MERGE_REQUEST_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/pull-request"]')
+        GIT_PROVIDER=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/git-provider"]')
+        CHANGE_REQUEST_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/pull-request"]')
 
-        DATA=$(cat <<EOF
-        {
-          "body": $(jq .text_content response.json)
-        }
-        EOF
-        )
+        if [[ "${GIT_PROVIDER}" == "gitlab" ]]; then
+          GITLAB_PROJECT_ID=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/target-project-id"]')
+          AUTH_HEADER="PRIVATE-TOKEN: ${GIT_PROVIDER_API_TOKEN}"
+          URL="${GIT_PROVIDER_API_URL}/projects/${GITLAB_PROJECT_ID}/merge_requests/${CHANGE_REQUEST_ID}/notes"
+        else
+          GITHUB_ORG=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/url-org"]')
+          GITHUB_REPO=$(echo "${PIPELINERUN_ANNOTATIONS}" | jq -r '.["pipelinesascode.tekton.dev/url-repository"]')
+          AUTH_HEADER="Authorization: token ${GIT_PROVIDER_API_TOKEN}"
+          URL="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}/issues/${CHANGE_REQUEST_ID}/comments"
+        fi
+
+        BODY=$(jq .text_content response.json)
+        DATA='{"body":'${BODY}'}'
 
         curl \
           --insecure \
           --fail-with-body \
           --request POST \
           --header "Content-Type: application/json" \
-          --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
+          --header "${AUTH_HEADER}" \
           --data "${DATA}" \
-          "${GITLAB_API_URL}/projects/${GITLAB_PROJECT_ID}/merge_requests/${GITLAB_MERGE_REQUEST_ID}/notes"
+          "${URL}"

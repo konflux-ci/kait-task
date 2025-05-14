@@ -96,6 +96,7 @@ spec:
         )
 
         curl \
+          --retry 3 \
           --fail-with-body \
           --insecure \
           --output response.json \

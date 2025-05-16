@@ -79,7 +79,7 @@ spec:
 
         BUILD_OUTPUT=$(tail logs.txt)
 
-        QUERY="""You are a Tekton pipeline troubleshooting assistant,
+        PROMPT="""You are a Tekton pipeline troubleshooting assistant,
         responsible for analyzing pipeline failures as part of a multi-step
         debugging workflow. Your task is to identify issues, diagnose root
         causes, suggest actionable resolutions, and provide preventive
@@ -118,14 +118,12 @@ spec:
         tee data.json <<EOF
         {
           "messages": [
-            {"role":"system","content":$(echo "${QUERY} \n ${BUILD_OUTPUT}" | jq -Rs .)}
+            {"role": "system", "content":$(echo "${PROMPT}" | jq -Rs .)},
+            {"role": "user", "content":$(echo "There's been a failed build! Here is the output:\n${BUILD_OUTPUT}" | jq -Rs .)}
           ],
           "model": "/data/$(params.model_name)",
           "temperature": 0.2,
-          "max_tokens": 700,
-          "top_p": 1,
-          "frequency_penalty": 0,
-          "presence_penalty": 0
+          "max_tokens": 700
         }
         EOF
 

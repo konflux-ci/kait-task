@@ -6,16 +6,6 @@ spec:
   workspaces:
     - name: workspace
   params:
-    - name: tangerine_api_url_secret
-      type: string
-      description: Secret containing the Tangerine API URL
-    - name: tangerine_api_token_secret
-      type: string
-      description: Secret containing the Tangerine API token
-    - name: tangerine_assistant_id
-      type: string
-      description: ID for the chat assistant
-      default: "88"
     - name: pipelinerun_name
       type: string
       description: Name of the current pipeline run
@@ -28,6 +18,13 @@ spec:
       type: string
     - name: git_provider_api_url_secret
       type: string
+    - name: model_api_endpoint_secret
+      type: string
+    - name: model_api_token_secret
+      type: string
+    - name: model_name
+      type: string
+      description: Name of the model to use (e.g. granite-3.2-8b-instruct)
   steps:
     - name: gather-logs
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
@@ -61,16 +58,16 @@ spec:
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
       workingDir: $(workspaces.workspace.path)
       env:
-        - name: TANGERINE_API_TOKEN
+        - name: MODEL_API_TOKEN
           valueFrom:
             secretKeyRef:
-              name: $(params.tangerine_api_token_secret)
-              key: tangerine_api_token
-        - name: TANGERINE_API_URL
+              name: $(params.model_api_token_secret)
+              key: model_api_token
+        - name: MODEL_API_ENDPOINT
           valueFrom:
             secretKeyRef:
-              name: $(params.tangerine_api_url_secret)
-              key: tangerine_api_url
+              name: $(params.model_api_endpoint_secret)
+              key: model_api_endpoint
       script: |
         #!/usr/bin/env bash
 
@@ -118,14 +115,19 @@ spec:
         """
 
         # escape the build output
-        DATA=$(cat <<EOF
+        tee data.json <<EOF
         {
-          "query": $(echo "${QUERY} \n ${BUILD_OUTPUT}" | jq -Rs .),
-          "stream": "false",
-          "client": "konflux-ai-triager"
+          "messages": [
+            {"role":"system","content":$(echo "${QUERY} \n ${BUILD_OUTPUT}" | jq -Rs .)}
+          ],
+          "model": "/data/$(params.model_name)",
+          "temperature": 0.2,
+          "max_tokens": 700,
+          "top_p": 1,
+          "frequency_penalty": 0,
+          "presence_penalty": 0
         }
         EOF
-        )
 
         curl \
           --retry 3 \
@@ -134,9 +136,9 @@ spec:
           --output response.json \
           --request POST \
           --header "Content-Type: application/json" \
-          --header "Authorization: Bearer ${TANGERINE_API_TOKEN}" \
-          --data "${DATA}" \
-          "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
+          --header "Authorization: Bearer ${MODEL_API_TOKEN}" \
+          --data @data.json \
+          "${MODEL_API_ENDPOINT}/v1/chat/completions"
 
     - name: post-comment
       image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
@@ -176,7 +178,7 @@ spec:
           URL="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}/issues/${CHANGE_REQUEST_ID}/comments"
         fi
 
-        BODY=$(jq .text_content response.json)
+        BODY=$(jq .choices[0].message.content response.json)
         DATA='{"body":'${BODY}'}'
 
         curl \

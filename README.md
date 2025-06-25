@@ -42,3 +42,24 @@ stringData:
   git_provider_api_token: ""
   git_provider_api_url: ""
 ```
+---
+## Recommended prompt pattern for applying PoC KAIT to your project.
+Prompt assumes the user has collected error logs from failed Konflux run.
+
+```
+prompt_summarize_template: |
+  Take the provided konflux log and create a list of the errors contained in it
+  <error_log>
+```
+
+__In the event there is more than one error provided, use the following prompt.__
+```
+prompt_clarify_template: |
+  Which error was the root cause?
+```
+
+__In the event no explanation has been provided, use the following prompt.__
+```
+prompt_solution_template: |
+  How do I resolve this error?  <-- results may vary
+```

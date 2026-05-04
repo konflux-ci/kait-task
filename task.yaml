@@ -30,7 +30,7 @@ spec:
       type: string
   steps:
     - name: gather-logs
-      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      image: quay.io/konflux-ci/task-runner:1.6.0@sha256:1abfe4e50d4e961d0fd9790202565f93ee650fe8dfc50932c94989acba10485f
       workingDir: $(workspaces.workspace.path)
       script: |
         #!/usr/bin/env bash
@@ -58,7 +58,7 @@ spec:
     # TODO: deduplicate/prune logs and format query
 
     - name: chat
-      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      image: quay.io/konflux-ci/task-runner:1.6.0@sha256:1abfe4e50d4e961d0fd9790202565f93ee650fe8dfc50932c94989acba10485f
       workingDir: $(workspaces.workspace.path)
       env:
         - name: TANGERINE_API_TOKEN
@@ -139,7 +139,7 @@ spec:
           "${TANGERINE_API_URL}/assistants/$(params.tangerine_assistant_id)/chat"
 
     - name: post-comment
-      image: quay.io/konflux-ci/appstudio-utils:8f9f933d7b0b57e37b96fd34698c92c785cfeadc@sha256:924eb1680b6cda674e902579135a06b2c6683c3cc1082bbdc159a4ce5ea9f4df
+      image: quay.io/konflux-ci/task-runner:1.6.0@sha256:1abfe4e50d4e961d0fd9790202565f93ee650fe8dfc50932c94989acba10485f
       workingDir: $(workspaces.workspace.path)
       when:
         - input: "$(params.comment_on_change_request)"
